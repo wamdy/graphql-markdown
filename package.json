@@ -15,8 +15,6 @@
     "yarn.lock"
   ],
   "scripts": {
-    "generate-markdown": "node src/index.js https://msstg.fivefen.com/consumer/graphql > generated/Consumer.md --title Consumer",
-    "generate-openapi": "node src/indexo.js https://msstg.fivefen.com/consumer/graphql > generated/Consumer.openapi.json --title Consumer",
     "coverage": "cat coverage/lcov.info | coveralls",
     "format": "npm run lint:fix || true",
     "lint": "eslint .",
