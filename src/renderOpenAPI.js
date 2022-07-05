@@ -36,6 +36,7 @@ function renderType(type, options) {
 function renderObject(type, options) {
   options = options || {}
   const skipTitle = options.skipTitle === true
+  const title = options.title
   const printer = options.printer || console.log
   const headingLevel = options.headingLevel || 1
   const getTypeURL = options.getTypeURL
@@ -54,7 +55,9 @@ function renderObject(type, options) {
     if (argType.kind === 'LIST') {
       printer(`"type": "array",`)
       printer(`"items": {`)
-      printer(`"$ref": "#/components/schemas/${argType.ofType.name}"`)
+      printer(
+        `"$ref": "#/components/${title.toLowerCase()}/${argType.ofType.name}"`
+      )
       printer(`}`)
     } else if (
       argType.kind === 'INPUT_OBJECT' ||
@@ -62,7 +65,7 @@ function renderObject(type, options) {
       argType.kind === 'ENUM' ||
       argType.kind === 'INTERFACE'
     ) {
-      printer(`"$ref": "#/components/schemas/${argType.name}"`)
+      printer(`"$ref": "#/components/${title.toLowerCase()}/${argType.name}"`)
     } else if (argType.kind === 'SCALAR') {
       printer(`"type": "${scalarTypeMap[argType.name]}"`)
     }
@@ -72,9 +75,9 @@ function renderObject(type, options) {
     }
   })
   printer('},"required":[')
+  var detectNextField = false
   fields.forEach((field, index) => {
     var argType = field.type
-    var detectNextField = false
     if (argType.kind === 'NON_NULL') {
       printer(`"${field.name}"`)
       detectNextField = true
@@ -104,6 +107,7 @@ function toEnumDescription(name) {
 function renderApi(type, options) {
   options = options || {}
   const skipTitle = options.skipTitle === true
+  const title = options.title
   const printer = options.printer || console.log
   const headingLevel = options.headingLevel || 1
   const getTypeURL = options.getTypeURL
@@ -117,7 +121,7 @@ function renderApi(type, options) {
     printer(`"summary": "${toDescription(field.name)}",`)
     printer(`"deprecated": false,`)
     printer(`"description": "${toDescription(field.name)}",`)
-    printer(`"tags": [],`)
+    printer(`"tags": ["${title.toLowerCase()}"],`)
     printer(`"parameters": [],`)
     if (!isInputObject && field.args.length) {
       printer(
@@ -132,10 +136,16 @@ function renderApi(type, options) {
         if (argType.kind === 'LIST') {
           printer(`"type": "array",`)
           printer(`"items": {`)
-          printer(`"$ref": "#/components/schemas/${argType.ofType.name}"`)
+          printer(
+            `"$ref": "#/components/${title.toLowerCase()}/${
+              argType.ofType.name
+            }"`
+          )
           printer(`}`)
         } else {
-          printer(`"$ref": "#/components/schemas/${argType.name}"`)
+          printer(
+            `"$ref": "#/components/${title.toLowerCase()}/${argType.name}"`
+          )
         }
         printer(`}`)
         if (i < field.args.length - 1) {
@@ -169,7 +179,7 @@ function renderApi(type, options) {
     printer(`"message": { "type": "string"},`)
     printer(`"isSuccess": { "type": "boolean"},`)
     printer(`"result": {`)
-    printer(`"$ref": "#/components/schemas/${field.type.name}"`)
+    printer(`"$ref": "#/components/${title.toLowerCase()}/${field.type.name}"`)
     printer(`}`)
     printer(`}}}}`)
     printer(`}}}}`)
@@ -231,7 +241,7 @@ function renderParameters(type, level, options) {
 
 function renderOpenAPI(schema, options) {
   options = options || {}
-  const title = options.title || 'Schema Types'
+  const title = options.title || 'Schema'
   const skipTitle = options.skipTitle || false
   const skipTableOfContents = options.skipTableOfContents || false
   const prologue = options.prologue || ''
@@ -249,7 +259,7 @@ function renderOpenAPI(schema, options) {
     return Object.assign(typeMap, { [type.name]: type })
   }, {})
   const getTypeURL = type => {
-    const url = `#/components/schemas/${type.name}`
+    const url = `#/components/${title.toLowerCase()}/${type.name}`
     if (typeMap[type.name]) {
       return url
     } else if (typeof unknownTypeURL === 'function') {
@@ -290,9 +300,7 @@ function renderOpenAPI(schema, options) {
   printer(`    "openapi": "3.0.1",`)
   printer(`    "info": {`)
   if (!skipTitle) {
-    printer('    "title": "Consumer",')
-  } else {
-    printer(`    "title": "",`)
+    printer(`    "title": "${title}",`)
   }
   if (prologue) {
     printer(`        "description": "${prologue}",`)
@@ -300,11 +308,12 @@ function renderOpenAPI(schema, options) {
     printer(`        "description": "",`)
   }
   printer(`        "version": "1.0.0"`)
-  printer(`},"tags": [],`)
+  printer(`},"tags": ["${title.toLowerCase()}"],`)
   printer(`  "paths": {`)
   if (query) {
     renderApi(query, {
       skipTitle: true,
+      title,
       headingLevel,
       printer,
       getTypeURL,
@@ -315,6 +324,7 @@ function renderOpenAPI(schema, options) {
     printer(` ,`)
     renderApi(mutation, {
       skipTitle: true,
+      title,
       headingLevel,
       printer,
       getTypeURL,
@@ -328,7 +338,7 @@ function renderOpenAPI(schema, options) {
   if (objects.length) {
     // printer(`\n${'#'.repeat(headingLevel + 1)} Objects`)
     objects.forEach((type, index) => {
-      renderObject(type, { headingLevel, printer, getTypeURL })
+      renderObject(type, { headingLevel, title, printer, getTypeURL })
       if (index < objects.length - 1) {
         printer(',')
       }
@@ -339,7 +349,7 @@ function renderOpenAPI(schema, options) {
     printer(` ,`)
     // printer(`\n${'#'.repeat(headingLevel + 1)} Inputs`)
     inputs.forEach((type, index) => {
-      renderObject(type, { headingLevel, printer, getTypeURL })
+      renderObject(type, { headingLevel, title, printer, getTypeURL })
       if (index < inputs.length - 1) {
         printer(',')
       }
@@ -371,7 +381,7 @@ function renderOpenAPI(schema, options) {
     printer(` ,`)
     // printer(`\n${'#'.repeat(headingLevel + 1)} Interfaces\n`)
     interfaces.forEach((type, index) => {
-      renderObject(type, { headingLevel, printer, getTypeURL })
+      renderObject(type, { headingLevel, title, printer, getTypeURL })
       if (index < interfaces.length - 1) {
         printer(',')
       }
