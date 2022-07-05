@@ -334,7 +334,7 @@ function renderOpenAPI(schema, options) {
 
   printer(`  },`)
   printer(`  "components": {`)
-  printer(`    "schemas": {`)
+  printer(`    "${title.toLowerCase()}": {`)
   if (objects.length) {
     // printer(`\n${'#'.repeat(headingLevel + 1)} Objects`)
     objects.forEach((type, index) => {
