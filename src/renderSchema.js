@@ -1,23 +1,35 @@
+/* jshint esversion: 6 */
 'use strict'
 function sortBy(arr, property) {
   arr.sort((a, b) => {
     const aValue = a[property]
     const bValue = b[property]
-    if (aValue > bValue) return 1
-    if (bValue > aValue) return -1
+    if (aValue > bValue) {
+      return 1
+    }
+    if (bValue > aValue) {
+      return -1
+    }
     return 0
   })
 }
 
+function renderNonNull(type, options) {
+  if (type.kind === 'NON_NULL') {
+    return '*'
+  }
+  return ' '
+}
+
 function renderType(type, options) {
   if (type.kind === 'NON_NULL') {
-    return renderType(type.ofType, options) + '!'
+    return renderType(type.ofType, options)
   }
   if (type.kind === 'LIST') {
     return `[${renderType(type.ofType, options)}]`
   }
   const url = options.getTypeURL(type)
-  return url ? `<a href="${url}">${type.name}</a>` : type.name
+  return url ? `[${type.name}](${url})` : type.name
 }
 
 function renderObject(type, options) {
@@ -29,71 +41,148 @@ function renderObject(type, options) {
   const isInputObject = type.kind === 'INPUT_OBJECT'
 
   if (!skipTitle) {
-    printer(`\n${'#'.repeat(headingLevel + 2)} ${type.name}\n`)
+    printer(
+      `\n${'#'.repeat(headingLevel + 2)} ${
+        type.name
+      }\n<a id="${type.name.toLowerCase()}"></a>`
+    )
   }
   if (type.description) {
     printer(`${type.description}\n`)
   }
-  printer('<table>')
-  printer('<thead>')
-  printer('<tr>')
-  if (isInputObject) {
-    printer('<th colspan="2" align="left">Field</th>')
-  } else {
-    printer('<th align="left">Field</th>')
-    printer('<th align="right">Argument</th>')
-  }
-  printer('<th align="left">Type</th>')
-  printer('<th align="left">Description</th>')
-  printer('</tr>')
-  printer('</thead>')
-  printer('<tbody>')
+  printer('\n| Field  | Description   |')
+  printer('| ------ | ------------ |')
+  const fields = isInputObject ? type.inputFields : type.fields
+  fields.forEach(field => {
+    printer(
+      `| <font color="#FFC0CBH" > \`${field.name}\` ${renderNonNull(
+        field.type,
+        { getTypeURL }
+      )} </font>&nbsp; ${renderType(field.type, {
+        getTypeURL
+      })} | ${toDescription(field.name)} |`
+    )
+  })
+}
+
+function toDescription(name) {
+  let str = name.replace(/([A-Z])/g, ' $1').toLowerCase()
+  return str.replace(str[0], str[0].toUpperCase())
+}
+
+function toEnumDescription(name) {
+  let str = name.replace(/(_)/g, ' ').toLowerCase()
+  return str.replace(str[0], str[0].toUpperCase())
+}
+
+function renderApi(type, options) {
+  options = options || {}
+  const skipTitle = options.skipTitle === true
+  const printer = options.printer || console.log
+  const headingLevel = options.headingLevel || 1
+  const getTypeURL = options.getTypeURL
+  const getType = options.getType
+  const isInputObject = type.kind === 'INPUT_OBJECT'
 
   const fields = isInputObject ? type.inputFields : type.fields
   fields.forEach(field => {
-    printer('<tr>')
     printer(
-      `<td colspan="2" valign="top"><strong>${field.name}</strong>${
-        field.isDeprecated ? ' ⚠️' : ''
-      }</td>`
+      `\n${'#'.repeat(headingLevel + 2)} ${toDescription(
+        field.name
+      )}\n<a id="${field.name.toLowerCase()}"></a>`
     )
-    printer(`<td valign="top">${renderType(field.type, { getTypeURL })}</td>`)
-    if (field.description || field.isDeprecated) {
-      printer('<td>')
-      if (field.description) {
-        printer(`\n${field.description}\n`)
-      }
-      if (field.isDeprecated) {
-        printer('<p>⚠️ <strong>DEPRECATED</strong></p>')
-        if (field.deprecationReason) {
-          printer('<blockquote>')
-          printer(`\n${field.deprecationReason}\n`)
-          printer('</blockquote>')
-        }
-      }
-      printer('</td>')
-    } else {
-      printer('<td></td>')
-    }
-    printer('</tr>')
+    printer(`> ${type.name === 'Query' ? 'POST' : 'GET'} /${field.name}<br />`)
+
     if (!isInputObject && field.args.length) {
+      printer(`> Path parameters:`)
+      printer('>')
+      printer('> ```json')
       field.args.forEach((arg, i) => {
-        printer('<tr>')
-        printer(`<td colspan="2" align="right" valign="top">${arg.name}</td>`)
-        printer(`<td valign="top">${renderType(arg.type, { getTypeURL })}</td>`)
-        if (arg.description) {
-          printer('<td>')
-          printer(`\n${arg.description}\n`)
-          printer('</td>')
-        } else {
-          printer(`<td></td>`)
+        let s = `> "${arg.name}": ${renderParameters(arg.type, 0, { getType })}`
+        if (i < field.args.length - 1) {
+          s += ','
         }
-        printer('</tr>')
+        printer(s)
       })
+      printer('> ```')
+    }
+    printer('>')
+    printer('> curl:')
+    printer('>')
+    printer('> ```shell')
+    printer(
+      `> curl --location --request ${type.name === 'Query' ? 'POST' : 'GET'} ${
+        field.name
+      }\`\\ `
+    )
+    printer(`> --header 'User-Agent: apifox/1.0.0 (https://www.apifox.cn)' \\ `)
+    printer(`> --header 'Content-Type: application/json' \\ `)
+
+    if (!isInputObject && field.args.length) {
+      let s1 = `> --data-raw '{`
+      field.args.forEach((arg, i) => {
+        s1 += `$${arg.name}`
+        if (i < field.args.length - 1) {
+          s1 += ','
+        }
+      })
+      s1 += `}' \\`
+      printer(s1)
+    }
+    printer('> ```')
+    printer(`> ResponseCode: 200{{ok}} <br/>`)
+    printer(`> ResponseEntity: ${renderType(field.type, options)}`)
+  })
+}
+
+// 递归迭代类型结构
+function renderParameters(type, level, options) {
+  const getType = options.getType
+  if (type.kind === 'NON_NULL') {
+    return renderParameters(type.ofType, level + 1, options)
+  }
+  if (type.kind === 'LIST') {
+    return `[${renderParameters(type.ofType, level + 1, options)}]`
+  }
+  const isScalarObject = type.kind === 'SCALAR' || type.kind === 'ENUM'
+  if (isScalarObject) {
+    return `"${type.name.toLowerCase()}"`
+  }
+
+  const isEnumObject = type.kind === 'ENUM'
+  if (isEnumObject) {
+    return `${type.name.toLowerCase()}`
+  }
+  const isInputObject = type.kind === 'INPUT_OBJECT'
+
+  // console.log(type.name)
+  let typeDefine = getType(type.name)
+  const fields = isInputObject ? typeDefine.inputFields : typeDefine.fields
+  if (!fields) {
+    return `"${type.name.toLowerCase()}"`
+  }
+  var result = '{'
+  fields.forEach((field, index) => {
+    result += '    '
+    result += '\n>'
+    for (var i = 0; i < level; i++) {
+      result += '  '
+    }
+    result += `"${field.name.toLowerCase()}":${renderParameters(
+      field.type,
+      level + 1,
+      { getType }
+    )}`
+    if (index < fields.length - 1) {
+      result += ','
     }
   })
-  printer('</tbody>')
-  printer('</table>')
+  result += '\n>'
+  for (var i = 0; i < level; i++) {
+    result += '  '
+  }
+  result += '}'
+  return result
 }
 
 function renderSchema(schema, options) {
@@ -125,7 +214,12 @@ function renderSchema(schema, options) {
       return unknownTypeURL + url
     }
   }
-
+  const getType = typeName => {
+    if (typeMap[typeName]) {
+      return typeMap[typeName]
+    }
+    return 'unkown type'
+  }
   const queryType = schema.queryType
   const query =
     queryType && types.find(type => type.name === schema.queryType.name)
@@ -157,138 +251,159 @@ function renderSchema(schema, options) {
   }
 
   if (!skipTableOfContents) {
-    printer('<details>')
-    printer('  <summary><strong>Table of Contents</strong></summary>\n')
-    if (query) {
-      printer('  * [Query](#query)')
-    }
-    if (mutation) {
-      printer('  * [Mutation](#mutation)')
-    }
+    // printer('<details>')
+    printer('## Representations\n')
+    // if (query) {
+    //   printer('  * [Query](#query)')
+    // }
+    // if (mutation) {
+    //   printer('  * [Mutation](#mutation)')
+    // }
+    printer('<table>\n')
     if (objects.length) {
-      printer('  * [Objects](#objects)')
-      objects.forEach(type => {
-        printer(`    * [${type.name}](#${type.name.toLowerCase()})`)
+      // printer('  * [Objects](#objects)')
+      printer('<tr style="border:0;background:none">\n')
+      objects.forEach((type, i) => {
+        printer(
+          `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
+            type.name
+          }</a></td>`
+        )
+        if ((i + 1) % 5 === 0) {
+          printer('</tr>\n<tr style="border:0;background:none">\n')
+        }
       })
+      printer('</tr>\n')
     }
+
     if (inputs.length) {
-      printer('  * [Inputs](#inputs)')
-      inputs.forEach(type => {
-        printer(`    * [${type.name}](#${type.name.toLowerCase()})`)
+      // printer('  * [Inputs](#inputs)')
+      printer('<tr style="border:0;background:none">\n')
+      inputs.forEach((type, i) => {
+        printer(
+          `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
+            type.name
+          }</a></td>`
+        )
+        if ((i + 1) % 5 === 0) {
+          printer('</tr>\n<tr style="border:0;background:none">\n')
+        }
       })
+      printer('</tr>\n')
     }
+
     if (enums.length) {
-      printer('  * [Enums](#enums)')
-      enums.forEach(type => {
-        printer(`    * [${type.name}](#${type.name.toLowerCase()})`)
+      // printer('  * [Enums](#enums)')
+      printer('<tr style="border:0;background:none">\n')
+      enums.forEach((type, i) => {
+        printer(
+          `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
+            type.name
+          }</a></td>`
+        )
+        if ((i + 1) % 5 === 0) {
+          printer('</tr>\n<tr style="border:0;background:none">\n')
+        }
       })
+      printer('</tr>\n')
     }
     if (scalars.length) {
-      printer('  * [Scalars](#scalars)')
-      scalars.forEach(type => {
-        printer(`    * [${type.name}](#${type.name.toLowerCase()})`)
+      // printer('  * [Scalars](#scalars)')
+      printer('<tr style="border:0;background:none">\n')
+      scalars.forEach((type, i) => {
+        printer(
+          `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
+            type.name
+          }</a></td>`
+        )
+        if ((i + 1) % 5 === 0) {
+          printer('</tr>\n<tr style="border:0;background:none">\n')
+        }
       })
+      printer('</tr>\n')
     }
     if (interfaces.length) {
-      printer('  * [Interfaces](#interfaces)')
-      interfaces.forEach(type => {
-        printer(`    * [${type.name}](#${type.name.toLowerCase()})`)
+      // printer('  * [Interfaces](#interfaces)')
+      printer('<tr style="border:0;background:none">\n')
+      interfaces.forEach((type, i) => {
+        printer(
+          `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
+            type.name
+          }</a></td>`
+        )
+        if ((i + 1) % 5 === 0) {
+          printer('</tr>\n<tr style="border:0;background:none">\n')
+        }
       })
+      printer('</tr>\n')
     }
     if (unions.length) {
-      printer('  * [Unions](#unions)')
-      unions.forEach(type => {
-        printer(`    * [${type.name}](#${type.name.toLowerCase()})`)
+      // printer('  * [Unions](#unions)')
+      printer('<tr style="border:0;background:none">\n')
+      unions.forEach((type, i) => {
+        printer(
+          `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
+            type.name
+          }</a></td>`
+        )
+        if ((i + 1) % 5 === 0) {
+          printer('</tr>\n<tr style="border:0;background:none">\n')
+        }
       })
+      printer('</tr>\n')
     }
-    printer('\n</details>')
-  }
-
-  if (query) {
-    printer(
-      `\n${'#'.repeat(headingLevel + 1)} Query${
-        query.name === 'Query' ? '' : ' (' + query.name + ')'
-      }`
-    )
-    renderObject(query, { skipTitle: true, headingLevel, printer, getTypeURL })
-  }
-
-  if (mutation) {
-    printer(
-      `\n${'#'.repeat(headingLevel + 1)} Mutation${
-        mutation.name === 'Mutation' ? '' : ' (' + mutation.name + ')'
-      }`
-    )
-    renderObject(mutation, {
-      skipTitle: true,
-      headingLevel,
-      printer,
-      getTypeURL
-    })
+    // printer('\n</details>')
+    printer('</table>\n')
   }
 
   if (objects.length) {
-    printer(`\n${'#'.repeat(headingLevel + 1)} Objects`)
+    // printer(`\n${'#'.repeat(headingLevel + 1)} Objects`)
     objects.forEach(type =>
       renderObject(type, { headingLevel, printer, getTypeURL })
     )
   }
 
   if (inputs.length) {
-    printer(`\n${'#'.repeat(headingLevel + 1)} Inputs`)
+    // printer(`\n${'#'.repeat(headingLevel + 1)} Inputs`)
     inputs.forEach(type =>
       renderObject(type, { headingLevel, printer, getTypeURL })
     )
   }
 
   if (enums.length) {
-    printer(`\n${'#'.repeat(headingLevel + 1)} Enums`)
+    // printer(`\n${'#'.repeat(headingLevel + 1)} Enums`)
     enums.forEach(type => {
-      printer(`\n${'#'.repeat(headingLevel + 2)} ${type.name}\n`)
+      printer(
+        `\n${'#'.repeat(headingLevel + 2)} ${
+          type.name
+        }\n<a id="${type.name.toLowerCase()}"></a>`
+      )
+
       if (type.description) {
         printer(`${type.description}\n`)
       }
-      printer('<table>')
-      printer('<thead>')
-      printer('<th align="left">Value</th>')
-      printer('<th align="left">Description</th>')
-      printer('</thead>')
-      printer('<tbody>')
+      printer('\n| Value | Description  |')
+      printer('| ---------- | ------ |')
       type.enumValues.forEach(value => {
-        printer('<tr>')
         printer(
-          `<td valign="top"><strong>${value.name}</strong>${
-            value.isDeprecated ? ' ⚠️' : ''
-          }</td>`
+          `| <font color="#FFC0CBH" > \`${
+            value.name
+          }\` </font> | ${toEnumDescription(value.name)} |`
         )
-        if (value.description || value.isDeprecated) {
-          printer('<td>')
-          if (value.description) {
-            printer(`\n${value.description}\n`)
-          }
-          if (value.isDeprecated) {
-            printer('<p>⚠️ <strong>DEPRECATED</strong></p>')
-            if (value.deprecationReason) {
-              printer('<blockquote>')
-              printer(`\n${value.deprecationReason}\n`)
-              printer('</blockquote>')
-            }
-          }
-          printer('</td>')
-        } else {
-          printer('<td></td>')
-        }
-        printer('</tr>')
+        // printer(`| ${value.name} |  |`)
       })
-      printer('</tbody>')
-      printer('</table>')
+      printer('\n')
     })
   }
 
   if (scalars.length) {
-    printer(`\n${'#'.repeat(headingLevel + 1)} Scalars\n`)
+    // printer(`\n${'#'.repeat(headingLevel + 1)} Scalars\n`)
     scalars.forEach(type => {
-      printer(`${'#'.repeat(headingLevel + 2)} ${type.name}\n`)
+      printer(
+        `\n${'#'.repeat(headingLevel + 2)} ${
+          type.name
+        }\n<a id="${type.name.toLowerCase()}"></a>`
+      )
       if (type.description) {
         printer(`${type.description}\n`)
       }
@@ -296,43 +411,64 @@ function renderSchema(schema, options) {
   }
 
   if (interfaces.length) {
-    printer(`\n${'#'.repeat(headingLevel + 1)} Interfaces\n`)
+    // printer(`\n${'#'.repeat(headingLevel + 1)} Interfaces\n`)
     interfaces.forEach(type =>
       renderObject(type, { headingLevel, printer, getTypeURL })
     )
   }
 
   if (unions.length) {
-    printer(`\n${'#'.repeat(headingLevel + 1)} Unions`)
+    // printer(`\n${'#'.repeat(headingLevel + 1)} Unions`)
     unions.forEach(type => {
-      printer(`\n${'#'.repeat(headingLevel + 2)} ${type.name}\n`)
+      printer(
+        `\n${'#'.repeat(headingLevel + 2)} ${
+          type.name
+        }\n<a id="${type.name.toLowerCase()}"></a>`
+      )
       if (type.description) {
         printer(`${type.description}\n`)
       }
-      printer('<table>')
-      printer('<thead>')
-      printer('<th align="left">Type</th>')
-      printer('<th align="left">Description</th>')
-      printer('</thead>')
-      printer('<tbody>')
+      printer('| Type | Description  |')
       type.possibleTypes.forEach(objType => {
         const obj = objects.find(o => objType.name === o.name)
         const desc = objType.description || (obj && obj.description)
-        printer('<tr>')
         printer(
-          `<td valign="top"><strong>${renderType(objType, {
+          `| <font color="#FFC0CBH" > \`${renderType(objType, {
             getTypeURL
-          })}</strong></td>`
+          })}\` </font> | ${toDescription(objType.name)}|`
         )
-        if (desc) {
-          printer(`<td valign="top">${desc}</td>`)
-        } else {
-          printer('<td></td>')
-        }
-        printer('</tr>')
       })
-      printer('</tbody>')
-      printer('</table>')
+    })
+  }
+
+  printer('\n## API Category')
+  if (query) {
+    printer(
+      `\n${'#'.repeat(headingLevel + 1)} ${
+        query.name === 'Query' ? '' : ' (' + query.name + ')'
+      }`
+    )
+    renderApi(query, {
+      skipTitle: true,
+      headingLevel,
+      printer,
+      getTypeURL,
+      getType
+    })
+  }
+
+  if (mutation) {
+    printer(
+      `\n${'#'.repeat(headingLevel + 1)} ${
+        mutation.name === 'Mutation' ? '' : ' (' + mutation.name + ')'
+      }`
+    )
+    renderApi(mutation, {
+      skipTitle: true,
+      headingLevel,
+      printer,
+      getTypeURL,
+      getType
     })
   }
 
