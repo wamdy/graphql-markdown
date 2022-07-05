@@ -55,9 +55,7 @@ function renderObject(type, options) {
     if (argType.kind === 'LIST') {
       printer(`"type": "array",`)
       printer(`"items": {`)
-      printer(
-        `"$ref": "#/components/${title.toLowerCase()}/${argType.ofType.name}"`
-      )
+      printer(`"$ref": "#/components/schemas/${argType.ofType.name}"`)
       printer(`}`)
     } else if (
       argType.kind === 'INPUT_OBJECT' ||
@@ -65,7 +63,7 @@ function renderObject(type, options) {
       argType.kind === 'ENUM' ||
       argType.kind === 'INTERFACE'
     ) {
-      printer(`"$ref": "#/components/${title.toLowerCase()}/${argType.name}"`)
+      printer(`"$ref": "#/components/schemas/${argType.name}"`)
     } else if (argType.kind === 'SCALAR') {
       printer(`"type": "${scalarTypeMap[argType.name]}"`)
     }
@@ -136,16 +134,10 @@ function renderApi(type, options) {
         if (argType.kind === 'LIST') {
           printer(`"type": "array",`)
           printer(`"items": {`)
-          printer(
-            `"$ref": "#/components/${title.toLowerCase()}/${
-              argType.ofType.name
-            }"`
-          )
+          printer(`"$ref": "#/components/schemas/${argType.ofType.name}"`)
           printer(`}`)
         } else {
-          printer(
-            `"$ref": "#/components/${title.toLowerCase()}/${argType.name}"`
-          )
+          printer(`"$ref": "#/components/schemas/${argType.name}"`)
         }
         printer(`}`)
         if (i < field.args.length - 1) {
@@ -179,7 +171,7 @@ function renderApi(type, options) {
     printer(`"message": { "type": "string"},`)
     printer(`"isSuccess": { "type": "boolean"},`)
     printer(`"result": {`)
-    printer(`"$ref": "#/components/${title.toLowerCase()}/${field.type.name}"`)
+    printer(`"$ref": "#/components/schemas/${field.type.name}"`)
     printer(`}`)
     printer(`}}}}`)
     printer(`}}}}`)
@@ -259,7 +251,7 @@ function renderOpenAPI(schema, options) {
     return Object.assign(typeMap, { [type.name]: type })
   }, {})
   const getTypeURL = type => {
-    const url = `#/components/${title.toLowerCase()}/${type.name}`
+    const url = `#/components/schemas/${type.name}`
     if (typeMap[type.name]) {
       return url
     } else if (typeof unknownTypeURL === 'function') {
@@ -334,7 +326,7 @@ function renderOpenAPI(schema, options) {
 
   printer(`  },`)
   printer(`  "components": {`)
-  printer(`    "${title.toLowerCase()}": {`)
+  printer(`    "schemas": {`)
   if (objects.length) {
     // printer(`\n${'#'.repeat(headingLevel + 1)} Objects`)
     objects.forEach((type, index) => {
