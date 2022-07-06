@@ -29,7 +29,34 @@ function renderType(type, options) {
     return `[${renderType(type.ofType, options)}]`
   }
   const url = options.getTypeURL(type)
-  return url ? `[${type.name}](${url})` : type.name
+
+  let typeName = type.name
+  if (type.kind === 'SCALAR') {
+    typeName = scalarTypeMap[type.name]
+  }
+  return url ? `[${typeName}](${url})` : typeName
+}
+
+var scalarTypeMap = {
+  String: 'string',
+  Int: 'int',
+  Int64: 'int',
+  Int32: 'int',
+  Float: 'number',
+  Boolean: 'bool',
+  ID: 'string',
+  Time: 'time.Time'
+}
+
+var scalarDefaultValueMap = {
+  String: '"string"',
+  Int: '0',
+  Int64: '0',
+  Int32: '0',
+  Float: '0.0',
+  Boolean: 'true',
+  ID: '"string"',
+  Time: '"2022-01-01T00:00:00Z"'
 }
 
 function renderObject(type, options) {
@@ -91,7 +118,7 @@ function renderApi(type, options) {
         field.name
       )}\n<a id="${field.name.toLowerCase()}"></a>`
     )
-    printer(`> ${type.name === 'Query' ? 'POST' : 'GET'} /${field.name}<br />`)
+    printer(`> ${type.name === 'Query' ? 'GET' : 'POST'} /${field.name}<br />`)
 
     if (!isInputObject && field.args.length) {
       printer(`> Path parameters:`)
@@ -111,7 +138,7 @@ function renderApi(type, options) {
     printer('>')
     printer('> ```shell')
     printer(
-      `> curl --location --request ${type.name === 'Query' ? 'POST' : 'GET'} ${
+      `> curl --location --request ${type.name === 'Query' ? 'GET' : 'POST'} ${
         field.name
       }\`\\ `
     )
@@ -144,22 +171,23 @@ function renderParameters(type, level, options) {
   if (type.kind === 'LIST') {
     return `[${renderParameters(type.ofType, level + 1, options)}]`
   }
-  const isScalarObject = type.kind === 'SCALAR' || type.kind === 'ENUM'
+  const isScalarObject = type.kind === 'SCALAR'
   if (isScalarObject) {
-    return `"${type.name.toLowerCase()}"`
+    return `${scalarDefaultValueMap[type.name]}`
+    // return `"${type.name.toLowerCase()}"`
   }
 
   const isEnumObject = type.kind === 'ENUM'
+  let typeDefine = getType(type.name)
   if (isEnumObject) {
-    return `${type.name.toLowerCase()}`
+    return `"${typeDefine.enumValues[0].name}"`
   }
   const isInputObject = type.kind === 'INPUT_OBJECT'
 
   // console.log(type.name)
-  let typeDefine = getType(type.name)
   const fields = isInputObject ? typeDefine.inputFields : typeDefine.fields
   if (!fields) {
-    return `"${type.name.toLowerCase()}"`
+    return `"${type.name}"`
   }
   var result = '{'
   fields.forEach((field, index) => {
@@ -168,11 +196,9 @@ function renderParameters(type, level, options) {
     for (var i = 0; i < level; i++) {
       result += '  '
     }
-    result += `"${field.name.toLowerCase()}":${renderParameters(
-      field.type,
-      level + 1,
-      { getType }
-    )}`
+    result += `"${field.name}":${renderParameters(field.type, level + 1, {
+      getType
+    })}`
     if (index < fields.length - 1) {
       result += ','
     }
@@ -206,8 +232,18 @@ function renderSchema(schema, options) {
   }, {})
   const getTypeURL = type => {
     const url = `#${type.name.toLowerCase()}`
-    if (typeMap[type.name]) {
-      return url
+    let typeMapElement = typeMap[type.name]
+    if (typeMapElement) {
+      if (
+        typeMapElement.kind === 'ENUM' ||
+        typeMapElement.kind === 'INPUT_OBJECT' ||
+        typeMapElement.kind === 'UNION' ||
+        typeMapElement.kind === 'INTERFACE' ||
+        typeMapElement.kind === 'OBJECT'
+      ) {
+        return url
+      }
+      return unknownTypeURL
     } else if (typeof unknownTypeURL === 'function') {
       return unknownTypeURL(type)
     } else if (unknownTypeURL) {
@@ -276,21 +312,21 @@ function renderSchema(schema, options) {
       printer('</tr>\n')
     }
 
-    if (inputs.length) {
-      // printer('  * [Inputs](#inputs)')
-      printer('<tr style="border:0;background:none">\n')
-      inputs.forEach((type, i) => {
-        printer(
-          `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
-            type.name
-          }</a></td>`
-        )
-        if ((i + 1) % 5 === 0) {
-          printer('</tr>\n<tr style="border:0;background:none">\n')
-        }
-      })
-      printer('</tr>\n')
-    }
+    // if (inputs.length) {
+    //   // printer('  * [Inputs](#inputs)')
+    //   printer('<tr style="border:0;background:none">\n')
+    //   inputs.forEach((type, i) => {
+    //     printer(
+    //       `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
+    //         type.name
+    //       }</a></td>`
+    //     )
+    //     if ((i + 1) % 5 === 0) {
+    //       printer('</tr>\n<tr style="border:0;background:none">\n')
+    //     }
+    //   })
+    //   printer('</tr>\n')
+    // }
 
     if (enums.length) {
       // printer('  * [Enums](#enums)')
@@ -307,51 +343,53 @@ function renderSchema(schema, options) {
       })
       printer('</tr>\n')
     }
-    if (scalars.length) {
-      // printer('  * [Scalars](#scalars)')
-      printer('<tr style="border:0;background:none">\n')
-      scalars.forEach((type, i) => {
-        printer(
-          `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
-            type.name
-          }</a></td>`
-        )
-        if ((i + 1) % 5 === 0) {
-          printer('</tr>\n<tr style="border:0;background:none">\n')
-        }
-      })
-      printer('</tr>\n')
-    }
-    if (interfaces.length) {
-      // printer('  * [Interfaces](#interfaces)')
-      printer('<tr style="border:0;background:none">\n')
-      interfaces.forEach((type, i) => {
-        printer(
-          `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
-            type.name
-          }</a></td>`
-        )
-        if ((i + 1) % 5 === 0) {
-          printer('</tr>\n<tr style="border:0;background:none">\n')
-        }
-      })
-      printer('</tr>\n')
-    }
-    if (unions.length) {
-      // printer('  * [Unions](#unions)')
-      printer('<tr style="border:0;background:none">\n')
-      unions.forEach((type, i) => {
-        printer(
-          `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
-            type.name
-          }</a></td>`
-        )
-        if ((i + 1) % 5 === 0) {
-          printer('</tr>\n<tr style="border:0;background:none">\n')
-        }
-      })
-      printer('</tr>\n')
-    }
+    // if (scalars.length) {
+    //   // printer('  * [Scalars](#scalars)')
+    //   printer('<tr style="border:0;background:none">\n')
+    //   scalars.forEach((type, i) => {
+    //     printer(
+    //       `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
+    //         type.name
+    //       }</a></td>`
+    //     )
+    //     if ((i + 1) % 5 === 0) {
+    //       printer('</tr>\n<tr style="border:0;background:none">\n')
+    //     }
+    //   })
+    //   printer('</tr>\n')
+    // }
+
+    // if (interfaces.length) {
+    //   // printer('  * [Interfaces](#interfaces)')
+    //   printer('<tr style="border:0;background:none">\n')
+    //   interfaces.forEach((type, i) => {
+    //     printer(
+    //       `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
+    //         type.name
+    //       }</a></td>`
+    //     )
+    //     if ((i + 1) % 5 === 0) {
+    //       printer('</tr>\n<tr style="border:0;background:none">\n')
+    //     }
+    //   })
+    //   printer('</tr>\n')
+    // }
+
+    // if (unions.length) {
+    //   // printer('  * [Unions](#unions)')
+    //   printer('<tr style="border:0;background:none">\n')
+    //   unions.forEach((type, i) => {
+    //     printer(
+    //       `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
+    //         type.name
+    //       }</a></td>`
+    //     )
+    //     if ((i + 1) % 5 === 0) {
+    //       printer('</tr>\n<tr style="border:0;background:none">\n')
+    //     }
+    //   })
+    //   printer('</tr>\n')
+    // }
     // printer('\n</details>')
     printer('</table>\n')
   }
@@ -363,12 +401,12 @@ function renderSchema(schema, options) {
     )
   }
 
-  if (inputs.length) {
-    // printer(`\n${'#'.repeat(headingLevel + 1)} Inputs`)
-    inputs.forEach(type =>
-      renderObject(type, { headingLevel, printer, getTypeURL })
-    )
-  }
+  // if (inputs.length) {
+  //   // printer(`\n${'#'.repeat(headingLevel + 1)} Inputs`)
+  //   inputs.forEach(type =>
+  //     renderObject(type, { headingLevel, printer, getTypeURL })
+  //   )
+  // }
 
   if (enums.length) {
     // printer(`\n${'#'.repeat(headingLevel + 1)} Enums`)
@@ -396,50 +434,50 @@ function renderSchema(schema, options) {
     })
   }
 
-  if (scalars.length) {
-    // printer(`\n${'#'.repeat(headingLevel + 1)} Scalars\n`)
-    scalars.forEach(type => {
-      printer(
-        `\n${'#'.repeat(headingLevel + 2)} ${
-          type.name
-        }\n<a id="${type.name.toLowerCase()}"></a>`
-      )
-      if (type.description) {
-        printer(`${type.description}\n`)
-      }
-    })
-  }
+  // if (scalars.length) {
+  //   // printer(`\n${'#'.repeat(headingLevel + 1)} Scalars\n`)
+  //   scalars.forEach(type => {
+  //     printer(
+  //       `\n${'#'.repeat(headingLevel + 2)} ${
+  //         type.name
+  //       }\n<a id="${type.name.toLowerCase()}"></a>`
+  //     )
+  //     if (type.description) {
+  //       printer(`${type.description}\n`)
+  //     }
+  //   })
+  // }
 
-  if (interfaces.length) {
-    // printer(`\n${'#'.repeat(headingLevel + 1)} Interfaces\n`)
-    interfaces.forEach(type =>
-      renderObject(type, { headingLevel, printer, getTypeURL })
-    )
-  }
+  // if (interfaces.length) {
+  //   // printer(`\n${'#'.repeat(headingLevel + 1)} Interfaces\n`)
+  //   interfaces.forEach(type =>
+  //     renderObject(type, { headingLevel, printer, getTypeURL })
+  //   )
+  // }
 
-  if (unions.length) {
-    // printer(`\n${'#'.repeat(headingLevel + 1)} Unions`)
-    unions.forEach(type => {
-      printer(
-        `\n${'#'.repeat(headingLevel + 2)} ${
-          type.name
-        }\n<a id="${type.name.toLowerCase()}"></a>`
-      )
-      if (type.description) {
-        printer(`${type.description}\n`)
-      }
-      printer('| Type | Description  |')
-      type.possibleTypes.forEach(objType => {
-        const obj = objects.find(o => objType.name === o.name)
-        const desc = objType.description || (obj && obj.description)
-        printer(
-          `| <font color="#FFC0CBH" > \`${renderType(objType, {
-            getTypeURL
-          })}\` </font> | ${toDescription(objType.name)}|`
-        )
-      })
-    })
-  }
+  // if (unions.length) {
+  //   // printer(`\n${'#'.repeat(headingLevel + 1)} Unions`)
+  //   unions.forEach(type => {
+  //     printer(
+  //       `\n${'#'.repeat(headingLevel + 2)} ${
+  //         type.name
+  //       }\n<a id="${type.name.toLowerCase()}"></a>`
+  //     )
+  //     if (type.description) {
+  //       printer(`${type.description}\n`)
+  //     }
+  //     printer('| Type | Description  |')
+  //     type.possibleTypes.forEach(objType => {
+  //       const obj = objects.find(o => objType.name === o.name)
+  //       const desc = objType.description || (obj && obj.description)
+  //       printer(
+  //         `| <font color="#FFC0CBH" > \`${renderType(objType, {
+  //           getTypeURL
+  //         })}\` </font> | ${toDescription(objType.name)}|`
+  //       )
+  //     })
+  //   })
+  // }
 
   printer('\n## API Category')
   if (query) {
