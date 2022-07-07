@@ -65,7 +65,12 @@ function renderObject(type, options) {
     ) {
       printer(`"$ref": "#/components/schemas/${argType.name}"`)
     } else if (argType.kind === 'SCALAR') {
-      printer(`"type": "${scalarTypeMap[argType.name]}"`)
+      printer(`"type": "${scalarTypeMap[argType.name]}",`)
+      let fieldDescription = field.description
+      if (!fieldDescription) {
+        fieldDescription = toDescription(field.name)
+      }
+      printer(`"description": "${fieldDescription}"`)
     }
     printer(`}`)
     if (index < fields.length - 1) {
@@ -116,9 +121,13 @@ function renderApi(type, options) {
   fields.forEach((field, index) => {
     printer(`"/${field.name}":{`)
     printer(`"${type.name === 'Query' ? 'post' : 'get'}":{`)
-    printer(`"summary": "${toDescription(field.name)}",`)
+    let fieldDescription = field.description
+    if (!fieldDescription) {
+      fieldDescription = toDescription(field.name)
+    }
+    printer(`"summary": "${fieldDescription}",`)
     printer(`"deprecated": false,`)
-    printer(`"description": "${toDescription(field.name)}",`)
+    printer(`"description": "${fieldDescription}",`)
     printer(`"tags": ["${title.toLowerCase()}"],`)
     printer(`"parameters": [],`)
     if (!isInputObject && field.args.length) {
@@ -136,6 +145,13 @@ function renderApi(type, options) {
           printer(`"items": {`)
           printer(`"$ref": "#/components/schemas/${argType.ofType.name}"`)
           printer(`}`)
+        } else if (argType.kind === 'SCALAR') {
+          printer(`"type": "${scalarTypeMap[argType.name]}",`)
+          let argDescription = arg.description
+          if (!argDescription) {
+            argDescription = toDescription(arg.name)
+          }
+          printer(`"description": "${argDescription}"`)
         } else {
           printer(`"$ref": "#/components/schemas/${argType.name}"`)
         }
@@ -354,6 +370,11 @@ function renderOpenAPI(schema, options) {
     enums.forEach((type, index) => {
       printer(`        "${type.name}": {`)
       printer(`            "type": "string",`)
+      let typeDescription = type.description
+      if (!typeDescription) {
+        typeDescription = toDescription(type.name)
+      }
+      printer(`            "description": "${typeDescription}",`)
       printer(`            "enum": [`)
       type.enumValues.forEach((value, index) => {
         printer(`"${value.name}"`)

@@ -81,19 +81,30 @@ function renderObject(type, options) {
   printer('| ------ | ------------ |')
   const fields = isInputObject ? type.inputFields : type.fields
   fields.forEach(field => {
+    let fieldDescription = field.description
+    if (!fieldDescription) {
+      fieldDescription = toDescription(field.name)
+    }
     printer(
       `| <font color="#FFC0CBH" > \`${field.name}\` ${renderNonNull(
         field.type,
-        { getTypeURL }
+        {
+          getTypeURL
+        }
       )} </font>&nbsp; ${renderType(field.type, {
         getTypeURL
-      })} | ${toDescription(field.name)} |`
+      })} | ${fieldDescription} |`
     )
   })
 }
 
+function toAPIName(name) {
+  let str = name.replace(/(([A-Z])+)/g, ' $1')
+  return str.replace(str[0], str[0].toUpperCase())
+}
+
 function toDescription(name) {
-  let str = name.replace(/([A-Z])/g, ' $1').toLowerCase()
+  let str = name.replace(/(([A-Z])+)/g, ' $1').toLowerCase()
   return str.replace(str[0], str[0].toUpperCase())
 }
 
@@ -114,16 +125,71 @@ function renderApi(type, options) {
   const fields = isInputObject ? type.inputFields : type.fields
   fields.forEach(field => {
     printer(
-      `\n${'#'.repeat(headingLevel + 2)} ${toDescription(
+      `\n${'#'.repeat(headingLevel + 2)} ${toAPIName(
         field.name
       )}\n<a id="${field.name.toLowerCase()}"></a>`
     )
+
+    let fieldDescription = field.description
+    if (fieldDescription) {
+      printer(`${fieldDescription}`)
+    }
     printer(`> ${type.name === 'Query' ? 'GET' : 'POST'} /${field.name}<br />`)
 
     if (!isInputObject && field.args.length) {
-      printer(`> Path parameters:`)
+      printer(`> Request Body:`)
       printer('>')
-      printer('> ```json')
+      printer('> | Field  | Description   |')
+      printer('> | ------ | ------------ |')
+      field.args.forEach((arg, i) => {
+        let fieldDescription = arg.description
+        if (!fieldDescription) {
+          fieldDescription = toDescription(arg.name)
+        }
+        printer(
+          `| <font color="#FFC0CBH" > \`${arg.name}\` ${renderNonNull(
+            arg.type,
+            {
+              getTypeURL
+            }
+          )} </font>&nbsp; ${renderType(arg.type, {
+            getTypeURL
+          })} | ${fieldDescription} |`
+        )
+      })
+    }
+    printer('>')
+    printer('> Response Body:')
+    printer('>')
+    printer('> | Field  | Description   |')
+    printer('> | ------ | ------------ |')
+    printer(
+      '> | <font color="#FFC0CBH" > `code`   </font>&nbsp; string               | Response code |'
+    )
+    printer(
+      '> | <font color="#FFC0CBH" > `message` </font>&nbsp; string               | Response message |'
+    )
+    printer(
+      '> | <font color="#FFC0CBH" > `isSuccess`   </font>&nbsp; bool           | Is Success |'
+    )
+    printer(
+      `> | <font color="#FFC0CBH" > \`result\` </font>&nbsp; ${renderType(
+        field.type,
+        options
+      )} | Result |`
+    )
+    printer('>')
+    printer('> Request Example:')
+    printer('>')
+    printer('> ```shell')
+    printer(
+      `> curl -X ${type.name === 'Query' ? 'GET' : 'POST'} /${field.name} \\ `
+    )
+    printer(`> --header "Content-Type: application/json" \\ `)
+    printer(`> --header "Authorization:Bearer ..." \\`)
+    if (!isInputObject && field.args.length) {
+      printer(`> --data-binary @- << DATA`)
+      printer('> {')
       field.args.forEach((arg, i) => {
         let s = `> "${arg.name}": ${renderParameters(arg.type, 0, { getType })}`
         if (i < field.args.length - 1) {
@@ -131,34 +197,21 @@ function renderApi(type, options) {
         }
         printer(s)
       })
-      printer('> ```')
-    }
-    printer('>')
-    printer('> curl:')
-    printer('>')
-    printer('> ```shell')
-    printer(
-      `> curl --location --request ${type.name === 'Query' ? 'GET' : 'POST'} ${
-        field.name
-      }\`\\ `
-    )
-    printer(`> --header 'User-Agent: apifox/1.0.0 (https://www.apifox.cn)' \\ `)
-    printer(`> --header 'Content-Type: application/json' \\ `)
-
-    if (!isInputObject && field.args.length) {
-      let s1 = `> --data-raw '{`
-      field.args.forEach((arg, i) => {
-        s1 += `$${arg.name}`
-        if (i < field.args.length - 1) {
-          s1 += ','
-        }
-      })
-      s1 += `}' \\`
-      printer(s1)
+      printer(`> }`)
+      printer('> DATA')
     }
     printer('> ```')
-    printer(`> ResponseCode: 200{{ok}} <br/>`)
-    printer(`> ResponseEntity: ${renderType(field.type, options)}`)
+    printer('> Response Example:<br/>')
+    printer(`> HTTP Code: 200{{ok}} <br/>`)
+    printer('>')
+    printer('> ```json')
+    printer(`> {`)
+    printer(`> "code": "success",`)
+    printer(`> "message": "ok",`)
+    printer(`> "isSuccess": true,`)
+    printer(`> "result": ${renderParameters(field.type, 1, { getType })}`)
+    printer(`> }`)
+    printer('> ```')
   })
 }
 
@@ -312,21 +365,21 @@ function renderSchema(schema, options) {
       printer('</tr>\n')
     }
 
-    // if (inputs.length) {
-    //   // printer('  * [Inputs](#inputs)')
-    //   printer('<tr style="border:0;background:none">\n')
-    //   inputs.forEach((type, i) => {
-    //     printer(
-    //       `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
-    //         type.name
-    //       }</a></td>`
-    //     )
-    //     if ((i + 1) % 5 === 0) {
-    //       printer('</tr>\n<tr style="border:0;background:none">\n')
-    //     }
-    //   })
-    //   printer('</tr>\n')
-    // }
+    if (inputs.length) {
+      // printer('  * [Inputs](#inputs)')
+      printer('<tr style="border:0;background:none">\n')
+      inputs.forEach((type, i) => {
+        printer(
+          `<td style="border:0"><a href="#${type.name.toLowerCase()}">${
+            type.name
+          }</a></td>`
+        )
+        if ((i + 1) % 5 === 0) {
+          printer('</tr>\n<tr style="border:0;background:none">\n')
+        }
+      })
+      printer('</tr>\n')
+    }
 
     if (enums.length) {
       // printer('  * [Enums](#enums)')
@@ -401,12 +454,12 @@ function renderSchema(schema, options) {
     )
   }
 
-  // if (inputs.length) {
-  //   // printer(`\n${'#'.repeat(headingLevel + 1)} Inputs`)
-  //   inputs.forEach(type =>
-  //     renderObject(type, { headingLevel, printer, getTypeURL })
-  //   )
-  // }
+  if (inputs.length) {
+    // printer(`\n${'#'.repeat(headingLevel + 1)} Inputs`)
+    inputs.forEach(type =>
+      renderObject(type, { headingLevel, printer, getTypeURL })
+    )
+  }
 
   if (enums.length) {
     // printer(`\n${'#'.repeat(headingLevel + 1)} Enums`)
